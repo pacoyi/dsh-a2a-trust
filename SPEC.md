@@ -80,6 +80,18 @@ dsh agent-team（实验性 Agent 团队子系统）当前是一组**无记忆的
 - 注入内容三段式：目标 agent 指纹摘要 / 与当前协作对象的近期信任快照 / 免责句（"historical stats, may be stale, never override current observations"）。
 - 开关：profile 配置 `a2a-trust.injection: off | lead-only | all`（默认 lead-only）。
 
+#### 2.2.1 M2 实现实证记录（2026-09-10，v0.2.0）
+
+实现时按上方要求复核了 0.1.2-rc.1 源码，接缝与原设想不同，修正如下：
+
+- **接缝修正**：不用 `team:policy` section（那是 `systemPrompt.section()`，order 600，变化会重写系统提示词、破 KV Cache 前缀，且是 agent-team 包所有物）。实际接缝是 **`systemPrompt.context()`（PromptContext，KV Cache 安全的动态上下文通道）**：动态上下文作为 durable user-role 快照记在保留历史之后（"the complete current value travels after retained history"），agent loop 仅在字节变化时追加——与 0.1.5 动态提示词基建同一机制。先例：approval 服务的 `approval:policy`（packages/interaction/user-approval/lib/types/index.js:67-80）。
+- **防抖语义修正**：原设想的"任务边界触发 + 显式防抖 + 次数上限 8"被取代——PromptContext 的快照语义天然字节稳定（同输入同输出），无变化即无新快照，无需计数上限。渲染确定性由 injection.js 保证（排序 lastSeen 降序、toFixed(2)）。
+- **同步约束**：`PromptContext.text` 是同步函数 → 信任数据读自内存投影（模块级 projection 数组，启动 seed + persist 持锁刷新），绝不 await 读盘。
+- **Lead/teammate 判定**：`ctx.inject(['agentTeams'], ...)` 嵌套 `ctx.inject(['systemPrompt'], ...)`；`agentTeams.membership(agent)` 拿 role/name（agent 来自 `assembleContextFor(agent, signal)`，每个 model step 必带；裸 assemble 无 agent → 贡献空串）。agentTeams 是 experimental 服务，profile 未装 agent-team 时回调不触发 → 零降级影响。
+- **order 分配**：CONTEXT_ORDERS 中心化具名表（SANDBOX 110 / APPROVAL 115 / SUBAGENT_DELEGATION 120），外部插件传字面量；取 **117**（未占用区间）。
+- **配置落地**：`apply(ctx, config)` 第二参读 `config.injection`，环境变量 `A2A_TRUST_INJECTION` 优先（同 A2A_TRUST_HOME 先例）；无 Schemastery（保持零依赖），normalizeInjectionConfig 防御性归一化，非法回退 lead-only。
+- **渲染语言**：英文（模型消费，对齐上游 team policy 语言）；看板保持中文（人消费）。
+
 ### 2.3 L2 反馈者——双向软反馈
 
 - 新工具 `trust_feedback`（模型侧，免审批但全审计）：`{target: <teammate name>, ratings: {competence?, reliability?, communication?, integrity?} ∈ 1..5, comment? ≤500 字符}`。

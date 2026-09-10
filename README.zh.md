@@ -29,6 +29,24 @@ dsh-a2a-trust 给 agent 团队一个声誉记忆：
 - 启动时回填 `~/.dsh/sessions` 下全部 `session.jsonl.zstd`，按**全局事件时间序**回放（会话级 mtime 无法表达因果：Lead 日志的 roster 事件因果上先于所有 teammate 事件，但其 mtime 反而最晚）。回填按会话幂等：重启不重复追加。
 - V2/V3 双容忍解析：log-only 的 `team/*` 事件形状两代一致；工具错误标志双拼写兼容（`data.error` 与 `message.content[0].isError`）。
 
+## 建议性注入（L1）
+
+当加载了 experimental agent-team profile 时，插件还会向模型上下文注入信任摘要——通过 KV Cache 安全的 `PromptContext` 通道（`a2a-trust:summary`，order 117），与 approval 服务的策略句同一动态上下文机制：快照骑在保留历史之后，更新不会重写稳定的系统提示词前缀；渲染字节稳定，无变化即无新快照。
+
+- **Lead 看到**每个已追踪 teammate 类型一行：`worker-a: competence 0.64/5, reliability 0.55/1 low-confidence; tasks 1, tools 4/0 err, messages 0`。
+- 每次注入以免责句结尾：*Historical stats, may be stale, never override current observations.*
+- 模式：`lead-only`（默认）只对 Lead 注入；`all` 额外让 teammate 看到自己的画像与协作者；`off` 完全不注册。通过 cordis.patch.yml 插入行的 `config:` 或环境变量 `A2A_TRUST_INJECTION`（优先）设置：
+
+```yaml
+- insert:
+  - id: a2a-trust
+    name: 'dsh-a2a-trust'
+    config:
+      injection: all
+```
+
+未装 agent-team profile 时注入不注册，观察者半不受影响。
+
 ## 安装
 
 需要 `dsh` CLI。从 GitHub 安装进某个 profile（如 `web`）：
@@ -57,7 +75,7 @@ dsh plugin --profile web add file:./dsh-a2a-trust
 
 ## 测试
 
-77 项测试覆盖五层：纯函数单元（EWMA 数学、指纹、置信门控）、基于真实会话日志脱敏 fixture 的事件提取器套件、存储契约（崩溃注入、锁接管、重放等价性）、真 zstd 压缩日志的回填集成（幂等、跨会话累积、反 mtime 因果）、以及 mock Cordis 上下文驱动真实 `apply()` 的插件级集成。
+101 项测试覆盖六层：纯函数单元（EWMA 数学、指纹、置信门控）、基于真实会话日志脱敏 fixture 的事件提取器套件、存储契约（崩溃注入、锁接管、重放等价性）、真 zstd 压缩日志的回填集成（幂等、跨会话累积、反 mtime 因果）、mock Cordis 上下文驱动真实 `apply()` 的插件级集成、以及建议性注入的渲染器单元（字节稳定、预算截断、模式门控）与 mock agentTeams/systemPrompt 服务的接缝测试。
 
 ```sh
 npm test

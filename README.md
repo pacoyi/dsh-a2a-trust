@@ -29,6 +29,24 @@ Four dimensions, each a value in `[0,1]` starting at 0.5, updated from live even
 - On startup, a backfill replays every `session.jsonl.zstd` under `~/.dsh/sessions` in **global event-time order** (per-session mtime cannot express causality — a Lead log's roster events precede every teammate event while its mtime is the latest). Backfill is idempotent per session: restarts append nothing.
 - V2/V3 envelope-tolerant parsing: log-only `team/*` shapes are stable across generations; tool-error flags read both spellings (`data.error` and `message.content[0].isError`).
 
+## Advisory injection (L1)
+
+When the experimental agent-team profile is loaded, the plugin also injects a trust summary into model context as a KV-cache-safe `PromptContext` contribution (`a2a-trust:summary`, order 117) — the same dynamic-context mechanism the approval service uses for its policy sentence. Snapshots ride after retained history, so updates never rewrite the stable system-prompt prefix, and a byte-stable renderer means no snapshot is appended while nothing changed.
+
+- **Lead sees** one row per tracked teammate type: `worker-a: competence 0.64/5, reliability 0.55/1 low-confidence; tasks 1, tools 4/0 err, messages 0`.
+- Every contribution ends with the advisory disclaimer: *Historical stats, may be stale, never override current observations.*
+- Modes: `lead-only` (default) injects only for team Leads; `all` also gives teammates their own profile plus collaborators; `off` disables registration entirely. Set via the plugin row's `config:` in `cordis.patch.yml`, or the `A2A_TRUST_INJECTION` environment variable (takes precedence):
+
+```yaml
+- insert:
+  - id: a2a-trust
+    name: 'dsh-a2a-trust'
+    config:
+      injection: all
+```
+
+Without the agent-team profile, injection never registers and the observer half is unaffected.
+
 ## Install
 
 Requires the `dsh` CLI. Install into a profile (e.g. `web`) from GitHub:
@@ -57,7 +75,7 @@ Delete the directory to reset all trust. Zero dependencies — `dependencies`, `
 
 ## Testing
 
-77 tests across five layers: pure-function unit tests (EWMA math, fingerprinting, confidence gates), an event-extractor suite against fixtures distilled from real session logs, storage contract tests (crash injection, lock takeover, replay equivalence), backfill integration over real zstd-compressed logs (idempotency, cross-session accumulation, reverse-mtime causality), and plugin-level integration driving the real `apply()` through a mocked Cordis context.
+101 tests across six layers: pure-function unit tests (EWMA math, fingerprinting, confidence gates), an event-extractor suite against fixtures distilled from real session logs, storage contract tests (crash injection, lock takeover, replay equivalence), backfill integration over real zstd-compressed logs (idempotency, cross-session accumulation, reverse-mtime causality), plugin-level integration driving the real `apply()` through a mocked Cordis context, and injection renderer unit tests pinning the advisory contract (byte-stability, budget truncation, mode gating) plus seam tests over mocked agentTeams/systemPrompt services.
 
 ```sh
 npm test

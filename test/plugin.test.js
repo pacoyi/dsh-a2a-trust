@@ -1,8 +1,9 @@
 /**
  * index.js integration tests — the real apply() wired into a mocked Cordis
  * context: live session/event ingestion lands in ledger+audit, notable
- * changes are logged, the RPC dashboard endpoint reflects state, and the
- * handler survives garbage events.
+ * changes are logged, the RPC dashboard endpoint reflects state, the
+ * handler survives garbage events, and the L1 advisor registers its
+ * PromptContext seam through the injected services.
  */
 
 import { test, describe, before, after } from 'node:test'
@@ -29,15 +30,26 @@ let rpcHandler
 let infos
 let warns
 
-function mockContext() {
+// cordis-like inject: the callback fires only when every declared service
+// is present in scope (connection is always available for the RPC surface;
+// agentTeams / systemPrompt come from the test's services argument).
+function mockContext(services = {}) {
   handlers = {}
   infos = []
   warns = []
   return {
     on: (event, handler) => { handlers[event] = handler },
     effect: (fn) => { fn().catch(() => {}) }, // startup backfill is tested separately
-    inject: (_deps, cb) => {
-      cb({ connection: { rpc: { handle: (_channel, fn) => { rpcHandler = fn } } } })
+    inject: (deps, cb) => {
+      const scope = {}
+      for (const dep of deps) {
+        if (dep === 'connection') {
+          scope.connection = { rpc: { handle: (_channel, fn) => { rpcHandler = fn } } }
+        } else if (services[dep] !== undefined) {
+          scope[dep] = services[dep]
+        }
+      }
+      if (deps.every((dep) => scope[dep] !== undefined)) cb(scope)
     },
     logger: {
       info: (msg) => { infos.push(msg) },
@@ -203,5 +215,86 @@ describe('backfill skip when zstd is missing', { skip: haveZstd }, () => {
     })
     await effectHandlers[0]()
     assert.equal(warns.some((m) => m.includes('backfill skipped')), true)
+  })
+})
+
+// ── L1 advisor: PromptContext seam ─────────────────────────────────────────
+
+describe('L1 advisor injection (PromptContext seam)', () => {
+  // Live agent stand-ins matched by reference in agentTeams.membership.
+  const leadAgent = { id: 'agent-lead' }
+  const mateAgent = { id: 'agent-mate' }
+  let contextSpec = null
+
+  function teamServices() {
+    contextSpec = null
+    return {
+      agentTeams: {
+        membership: (agent) => {
+          if (agent === leadAgent) return { role: 'lead', name: 'lead', id: 'team-1', root: leadAgent }
+          if (agent === mateAgent) return { role: 'teammate', name: 'worker-a', id: 'uuid-a', root: leadAgent }
+          throw new Error('not a live team member')
+        },
+      },
+      systemPrompt: {
+        context: (spec) => { contextSpec = spec },
+      },
+    }
+  }
+
+  const WORKER_C = { name: 'worker-c', description: 'subtask C', provider: 'spawn', context: 'fresh' }
+  const FP_C = fingerprint(WORKER_C)
+
+  test('registers a2a-trust:summary at order 117 when both services exist', () => {
+    apply(mockContext(teamServices()))
+    assert.ok(contextSpec, 'systemPrompt.context must be called')
+    assert.equal(contextSpec.name, 'a2a-trust:summary')
+    assert.equal(contextSpec.order, 117)
+    assert.equal(typeof contextSpec.text, 'function')
+  })
+
+  test('text() contributes nothing without a live agent (bare assemble)', () => {
+    assert.equal(contextSpec.text({}), '')
+    assert.equal(contextSpec.text(undefined), '')
+  })
+
+  test('text() survives a non-member agent (membership throws → no contribution)', () => {
+    assert.equal(contextSpec.text({ agent: { stranger: true } }), '')
+  })
+
+  test('lead text() reflects the in-memory projection refreshed by persist', async () => {
+    // This apply instance's projection starts empty; ingest a fresh worker-c
+    // batch through it and let the serialized tail settle — persist() must
+    // refresh the projection the synchronous seam reads.
+    feed(LEAD, { type: 'team/member', seq: 10, time: 20_000, data: { version: 2, teamId: LEAD, member: { id: 'uuid-ccc', ...WORKER_C, phase: 'active' } } })
+    feed(LEAD, { type: 'team/task', seq: 11, time: 21_000, data: { version: 2, teamId: LEAD, task: { id: 't3', revision: 1, subject: 's', description: '', status: 'pending', ownerId: 'uuid-ccc', blockedBy: [], writeScopes: [] } } })
+    feed(LEAD, { type: 'team/task', seq: 12, time: 22_000, data: { version: 2, teamId: LEAD, task: { id: 't3', revision: 2, subject: 's', description: '', status: 'completed', ownerId: 'uuid-ccc', blockedBy: [], writeScopes: [] } } })
+    await settleLedger((l) => l.agents[FP_C]?.stats?.tasksCompleted === 1)
+    const out = contextSpec.text({ agent: leadAgent })
+    assert.match(out, /worker-c: /)
+    assert.match(out, /never override current observations/)
+  })
+
+  test('teammate text() is empty in the default lead-only mode', () => {
+    assert.equal(contextSpec.text({ agent: mateAgent }), '')
+  })
+
+  test('no context registration when the agentTeams service is absent', () => {
+    contextSpec = null
+    apply(mockContext({ systemPrompt: { context: () => { throw new Error('must not register') } } }))
+    assert.equal(contextSpec, null)
+  })
+
+  test('off mode (A2A_TRUST_INJECTION) skips registration entirely', () => {
+    contextSpec = null
+    const prev = process.env.A2A_TRUST_INJECTION
+    process.env.A2A_TRUST_INJECTION = 'off'
+    try {
+      apply(mockContext(teamServices()))
+      assert.equal(contextSpec, null)
+    } finally {
+      if (prev === undefined) delete process.env.A2A_TRUST_INJECTION
+      else process.env.A2A_TRUST_INJECTION = prev
+    }
   })
 })

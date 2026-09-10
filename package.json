@@ -1,6 +1,6 @@
 {
   "name": "dsh-a2a-trust",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Trust-indexed A2A reputation plugin for DeepSeek Harness agent teams: live session/event ingestion, four-dimension EWMA trust ledger (cross-session, fingerprint-keyed), append-only audit log, and a Settings dashboard. | DeepSeek Harness Agent 团队信任指数插件：实时事件流摄取、四维 EWMA 信任账本（跨会话、指纹键控）、append-only 审计日志、设置页看板。",
   "type": "module",
   "main": "index.js",
@@ -54,6 +54,7 @@
     "ingest.js",
     "storage.js",
     "backfill.js",
+    "injection.js",
     "client.js",
     "cordis.patch.yml",
     "SPEC.md",
