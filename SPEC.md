@@ -217,10 +217,10 @@ fingerprint = sha256(name + '\x1f' + description + '\x1f' + provider + '\x1f' + 
 
 对齐 memory-lite 已验证的发布结构：
 
-- `package.json`：零 dependencies，仅 `peerDependencies: @deepseek-ai/cordis ^4.x + @deepseek-ai/dsh-tools`；`dsh.bundle.patch → ./cordis.patch.yml`；client 半注入 settings UI。
+- `package.json`：零 dependencies、零 peerDependencies（v0.1.0 曾声明 `@deepseek-ai/cordis ^4.0.1 + @deepseek-ai/dsh-tools ^0.0.1-rc.1`，发布后实测移除：两个包在代码里零 import——host 半全走 `ctx.inject?.([...])` 运行时注入；且 prerelease 元组上的 caret range 只匹配同一条元组线，`^0.0.1-rc.1` 对 `0.1.x` 线无约束力，干净安装时 npm 反而静默拉入旧代 `dsh-tools@0.0.1-rc.1`）；`dsh.bundle.patch → ./cordis.patch.yml`；client 半注入 settings UI。client 自注册 id 必须等于包名（boot graph row 以包名为 id，stripClientSuffix 只剥尾部 `/client`，无其他映射——由 client-smoke 测试 pin）。
 - host 半（`index.js`）：事件摄取、信任引擎、存储、Typert RPC 服务、工具注册。
 - client 半（`client.js`）：设置页「A2A 信任」卡片（列表 + 四维时序 + 事件流），经 RPC 读 host 半。
-- 开发循环：`link:` 进 profile + 手工 symlink peer 到共享池（`~/.dsh/profiles/node_modules/@deepseek-ai/`）——陷阱已知：插件目录内跑 `pnpm install` 会因 dsh-type-meta 404 失败，peer 永远装进 profile。
+- 开发循环：`link:` 进 profile + 手工 symlink 到共享池（`~/.dsh/profiles/node_modules/@deepseek-ai/`）——陷阱已知：插件目录内跑 `pnpm install` 会因 dsh-type-meta 404 失败，依赖永远装进 profile。
 
 ### 3.9 风险与对策
 

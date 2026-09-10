@@ -5,6 +5,14 @@
 // materializes it on demand. React comes from the loader; nothing else
 // is imported. The panel is read-only — trust is a signal, not a
 // constraint, so the UI shows the ledger and never mutates it.
+//
+// ID CONTRACT: the self-registration id below MUST equal the package
+// name in package.json. The host keys the boot graph row by package
+// name (client-modules graphRow(packageName)) and the loader matches
+// this registration to that row — stripClientSuffix only strips a
+// trailing '/client', there is no other id mapping. A mismatch fails
+// bundle arrival with `loaded without registering "<pkg>"`. Pinned by
+// test/client-smoke.test.js.
 window.__ModuleLoader__.load({
   id: 'dsh-a2a-trust',
   factory: (require) => {

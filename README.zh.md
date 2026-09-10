@@ -31,16 +31,10 @@ dsh-a2a-trust 给 agent 团队一个声誉记忆：
 
 ## 安装
 
-需要 `dsh` CLI。安装进某个 profile（如 `web`）：
+需要 `dsh` CLI。从 GitHub 安装进某个 profile（如 `web`）：
 
 ```sh
 dsh plugin --profile web add github:pacoyi/dsh-a2a-trust
-```
-
-或从 npm（发布后）：
-
-```sh
-dsh plugin --profile web add dsh-a2a-trust
 ```
 
 或从本地检出：
@@ -59,7 +53,7 @@ dsh plugin --profile web add file:./dsh-a2a-trust
 - `audit.jsonl` —— append-only，每次信任变更的第一公民记录
 - `ledger.json` —— 可重建快照（tmp→rename 原子写、保留一代 `.bak`），跨进程 PID 感知锁保护
 
-删除该目录即重置全部信任。除两个 peerDependencies（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`）外零依赖；持久化纯 Node 内建。
+删除该目录即重置全部信任。零依赖 —— `dependencies`、`devDependencies`、`peerDependencies` 全部为空：持久化与摄取纯 Node 内建，host 半通过运行时注入（`ctx.inject?.([...])`）拿到 Cordis 服务，从不 import 任何包。原先对 `@deepseek-ai/*` prerelease 的 `peerDependencies` 是有意移除的：prelease 元组上的 caret range（如 `^0.0.1-rc.1`）只能匹配同一条元组线，GitHub 安装时 npm 反而静默拉入旧代 `dsh-tools@0.0.1-rc.1`，对现代 `0.1.x` 线毫无约束力。
 
 ## 测试
 

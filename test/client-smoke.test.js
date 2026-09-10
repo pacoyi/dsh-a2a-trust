@@ -96,6 +96,16 @@ test('client.js registers as a dsh module with apply/inject exports', () => {
   assert.equal(mod.inject.join(','), 'slots')
 })
 
+// Boot-graph id pin: the host keys the plugin's boot row by package
+// name (client-modules graphRow(packageName)) and the loader matches the
+// self-registration to that row (stripClientSuffix strips only '/client').
+// A rename of either side without the other fails bundle arrival at
+// runtime with `loaded without registering "<pkg>"` — so pin it here.
+test('self-registration id equals the package name (boot graph row id)', () => {
+  const pkg = JSON.parse(readFileSync(join(dirname(CLIENT), 'package.json'), 'utf8'))
+  assert.equal(loadClient().id, pkg.name)
+})
+
 test('TrustPanel renders header and empty state before data arrives', () => {
   const tree = mountCard({ [PANEL.data]: null, [PANEL.err]: null })
   assert.deepEqual(childClasses(tree), ['a2t-header', null, 'a2t-empty'])

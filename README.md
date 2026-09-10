@@ -31,16 +31,10 @@ Four dimensions, each a value in `[0,1]` starting at 0.5, updated from live even
 
 ## Install
 
-Requires the `dsh` CLI. Install into a profile (e.g. `web`):
+Requires the `dsh` CLI. Install into a profile (e.g. `web`) from GitHub:
 
 ```sh
 dsh plugin --profile web add github:pacoyi/dsh-a2a-trust
-```
-
-Or from npm (after publish):
-
-```sh
-dsh plugin --profile web add dsh-a2a-trust
 ```
 
 Or from a local checkout:
@@ -59,7 +53,7 @@ Everything lives in `~/.dsh/dsh-a2a-trust/` (override with `A2A_TRUST_HOME`):
 - `audit.jsonl` — append-only, first-class record of every trust change
 - `ledger.json` — rebuildable snapshot (atomic tmp→rename writes, one `.bak` generation), guarded by a cross-process PID-aware lock
 
-Delete the directory to reset all trust. Zero runtime dependencies beyond two peerDependencies (`@deepseek-ai/cordis`, `@deepseek-ai/dsh-tools`); persistence is pure Node built-ins.
+Delete the directory to reset all trust. Zero dependencies — `dependencies`, `devDependencies`, and `peerDependencies` are all empty: persistence and ingestion are pure Node built-ins, and the host half reaches Cordis services through runtime injection (`ctx.inject?.([...])`), so nothing is ever imported. The previous `peerDependencies` on `@deepseek-ai/*` prereleases was removed deliberately: a caret range over a prerelease tuple (e.g. `^0.0.1-rc.1`) only ever matches that one tuple line, so npm installs from GitHub silently pulled the stale `dsh-tools@0.0.1-rc.1` instead of constraining the modern `0.1.x` line.
 
 ## Testing
 
